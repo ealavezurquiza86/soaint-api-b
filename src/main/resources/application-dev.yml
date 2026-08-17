@@ -1,0 +1,35 @@
+server:
+  port: 8773
+
+spring:
+  application:
+    name: prueba-api-b
+  datasource:
+    url: jdbc:h2:mem:transaccionesdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  # Paginación Spring Data Web, base 0, tope de tamaño (OWASP API4)
+  data:
+    web:
+      pageable:
+        default-page-size: 10
+        max-page-size: 100
+        one-indexed-parameters: false
+      sort:
+        sort-parameter: sort
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

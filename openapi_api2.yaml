@@ -1,0 +1,367 @@
+openapi: 3.0.3
+info:
+  title: API de Transacciones - Almacenamiento
+  version: 1.2.0
+  description: >
+    API de persistencia, consulta paginada y cancelación de transacciones (H2).
+    POST: comprobante plano (estatus APROBADA).
+    GET: listado paginado sin secreto.
+    PATCH /api/transaccion/cancelar: transición APROBADA → CANCELADA (acción body: cancelar).
+    Estatus en respuestas: valores del enum APROBADA | CANCELADA.
+    Sincronizado con springdoc y application-dev.yml (puerto 8773).
+servers:
+  - url: http://localhost:8773
+    description: Perfil dev (application-dev.yml, server.port=8773)
+paths:
+  /api/transaccion:
+    get:
+      summary: Consulta paginada de transacciones
+      description: >
+        Lista transacciones. No expone secreto. Página base 0.
+        Default: size=10, sort=id,DESC.
+        Campos sort permitidos: id, operacion, importe, cliente, referencia, estatus.
+        Estatus en ítems: APROBADA | CANCELADA.
+      operationId: listar
+      tags:
+        - Transacciones
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Número de página (base 0)
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Registros por página (máx. 100, application-dev.yml)
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            default: id,desc
+          description: Campo y dirección (asc|desc), p.ej. id,desc
+      responses:
+        '200':
+          description: Consulta paginada exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransaccionPageResponseDto'
+        '400':
+          description: Parámetros de paginación u orden inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+              examples:
+                PaginacionInvalida:
+                  summary: HTTP 400 — sort o page inválidos
+                  value:
+                    timestamp: "2026-08-15T17:00:00"
+                    status: 400
+                    error: Bad Request
+                    message: Los parámetros de paginación u ordenamiento son inválidos.
+                    path: /api/transaccion
+                    traceId: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                    details:
+                      pagination: "Campo de ordenamiento no permitido: secreto"
+    post:
+      summary: Almacena una nueva transacción y genera su referencia
+      description: >
+        Guarda los datos, genera referencia de 6 dígitos,
+        asigna estatus APROBADA y retorna el comprobante plano.
+      operationId: store
+      tags:
+        - Transacciones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistroTransaccionRequestDto'
+      responses:
+        '200':
+          description: Transacción persistida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistroTransaccionResponseDto'
+              example:
+                id: "2376"
+                estatus: APROBADA
+                referencia: "262737"
+                operacion: venta
+        '400':
+          description: Parámetros inválidos o incompletos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+              examples:
+                ValidacionFallida:
+                  summary: HTTP 400 — Bean Validation
+                  value:
+                    timestamp: "2026-08-15T17:00:00"
+                    status: 400
+                    error: Bad Request
+                    message: Los parámetros de la petición son incorrectos o estan incompletos.
+                    path: /api/transaccion
+                    traceId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    details:
+                      operacion: El atributo operacion es obligatorio
+                      importe: El atributo importe no puede ser negativo
+  /api/transaccion/cancelar:
+    patch:
+      summary: Cancela una transacción aprobada
+      description: >
+        Actualiza APROBADA → CANCELADA cuando coinciden id y referencia.
+        Body: estatus debe ser la acción "cancelar". Respuesta 200 sin cuerpo.
+        404 si no existe o no es cancelable; 409 si ya está CANCELADA.
+      operationId: cancelar
+      tags:
+        - Transacciones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelacionTransaccionRequestDto'
+            example:
+              id: "2376"
+              referencia: "262737"
+              estatus: cancelar
+      responses:
+        '200':
+          description: Transacción cancelada exitosamente (sin cuerpo)
+        '400':
+          description: Parámetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+              examples:
+                ValidacionFallida:
+                  summary: HTTP 400 — body inválido
+                  value:
+                    timestamp: "2026-08-15T17:00:00"
+                    status: 400
+                    error: Bad Request
+                    message: Los parámetros de la petición son incorrectos o estan incompletos.
+                    path: /api/transaccion/cancelar
+                    traceId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    details:
+                      id: El id debe ser un número entero positivo
+        '404':
+          description: Transacción no encontrada o no cancelable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+              examples:
+                NoEncontrada:
+                  summary: HTTP 404 — no cancelable
+                  value:
+                    timestamp: "2026-08-15T17:00:00"
+                    status: 404
+                    error: Not Found
+                    message: No se pudo cancelar la transacción solicitada.
+                    path: /api/transaccion/cancelar
+                    traceId: c3d4e5f6-a7b8-9012-cdef-123456789012
+                    details:
+                      detalle: No se encontró una transacción cancelable con el id y referencia indicados.
+        '409':
+          description: La transacción ya se encuentra cancelada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+              examples:
+                YaCancelada:
+                  summary: HTTP 409 — ya cancelada
+                  value:
+                    timestamp: "2026-08-15T17:00:00"
+                    status: 409
+                    error: Conflict
+                    message: La transacción ya se encuentra cancelada.
+                    path: /api/transaccion/cancelar
+                    traceId: d4e5f6a7-b8c9-0123-def0-234567890123
+                    details:
+                      detalle: La transacción ya se encuentra cancelada.
+        '500':
+          description: Error interno no controlado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+              examples:
+                ErrorInterno:
+                  summary: HTTP 500 — error interno
+                  value:
+                    timestamp: "2026-08-15T17:00:00"
+                    status: 500
+                    error: Internal Server Error
+                    message: Ha ocurrido un error interno en el servidor. Contacte a soporte con el ID de seguimiento.
+                    path: /api/transaccion/cancelar
+                    traceId: e5f6a7b8-c9d0-1234-ef01-345678901234
+components:
+  schemas:
+    RegistroTransaccionRequestDto:
+      type: object
+      required:
+        - operacion
+        - importe
+        - cliente
+        - secreto
+      properties:
+        operacion:
+          type: string
+          description: Nombre de la operación (solo letras y espacios)
+          pattern: "^[a-zA-ZáéíóúÁÉÍÓÚñÑ\\s]+$"
+          example: venta
+        importe:
+          type: number
+          format: double
+          description: Importe monetario (hasta 16 enteros y 2 decimales, >= 0)
+          minimum: 0
+          example: 100.00
+        cliente:
+          type: string
+          description: Cliente (máx. 500 caracteres)
+          maxLength: 500
+          example: Angel
+        secreto:
+          type: string
+          description: Secreto en texto plano (requerimiento de la prueba)
+          example: miSecretoPlano123
+    RegistroTransaccionResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+          description: PK generada, expuesta como String
+          example: "2376"
+        estatus:
+          type: string
+          description: Estatus persistido (enum TransaccionEstatus)
+          enum:
+            - APROBADA
+            - CANCELADA
+          example: APROBADA
+        referencia:
+          type: string
+          description: Referencia de 6 dígitos
+          example: "262737"
+        operacion:
+          type: string
+          example: venta
+    CancelacionTransaccionRequestDto:
+      type: object
+      required:
+        - id
+        - referencia
+        - estatus
+      properties:
+        id:
+          type: string
+          description: PK numérica como String (entero positivo)
+          pattern: "^[1-9]\\d*$"
+          example: "2376"
+        referencia:
+          type: string
+          description: Referencia de 6 dígitos
+          pattern: "^\\d{6}$"
+          example: "262737"
+        estatus:
+          type: string
+          description: Acción de cancelación (no es el valor persistido). Único valor cancelar.
+          pattern: "(?i)^cancelar$"
+          example: cancelar
+    TransaccionListItemDto:
+      type: object
+      description: Ítem de listado paginado (sin secreto)
+      properties:
+        id:
+          type: string
+          example: "2376"
+        operacion:
+          type: string
+          example: venta
+        importe:
+          type: number
+          format: double
+          example: 100.00
+        cliente:
+          type: string
+          example: Angel
+        referencia:
+          type: string
+          example: "262737"
+        estatus:
+          type: string
+          enum:
+            - APROBADA
+            - CANCELADA
+          example: APROBADA
+    TransaccionPageResponseDto:
+      type: object
+      description: Respuesta paginada de transacciones
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransaccionListItemDto'
+        page:
+          type: integer
+          description: Número de página (base 0)
+          example: 0
+        size:
+          type: integer
+          example: 10
+        totalElements:
+          type: integer
+          format: int64
+          example: 57
+        totalPages:
+          type: integer
+          example: 6
+        first:
+          type: boolean
+          example: true
+        last:
+          type: boolean
+          example: false
+    ErrorResponseDto:
+      type: object
+      description: >
+        Envelope de error de la API. El schema es compartido; el ejemplo concreto
+        (status/error/message) se define por cada código HTTP en responses.examples.
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          description: Código HTTP (400, 404, 409, 500, …)
+        error:
+          type: string
+          description: Reason phrase HTTP
+        message:
+          type: string
+        path:
+          type: string
+        traceId:
+          type: string
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: Detalle opcional campo→mensaje

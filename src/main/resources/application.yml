@@ -1,0 +1,38 @@
+server:
+  port: ${SERVER_PORT:8443}
+
+spring:
+  application:
+    name: ${SPRING_APPLICATION_NAME:api-transacciones}
+  datasource:
+    # DB_CLOSE_DELAY=-1: evita que H2 borre la BD en memoria al cerrar la conexión
+    # del DDL (sin esto la tabla transacciones se pierde y /api/transaccion falla).
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:transaccionesdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  jpa:
+    database-platform: ${SPRING_JPA_DATABASE_PLATFORM:org.hibernate.dialect.H2Dialect}
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
+  h2:
+    console:
+      enabled: ${SPRING_H2_CONSOLE_ENABLED:true}
+      # Path fijo: no usar env SPRING_H2_CONSOLE_PATH (Git Bash convierte /h2-console).
+      path: /h2-console
+  # Paginación Spring Data Web, base 0, tope de tamaño (OWASP API4)
+  data:
+    web:
+      pageable:
+        default-page-size: ${SPRING_DATA_PAGEABLE_DEFAULT_PAGE_SIZE:10}
+        max-page-size: ${SPRING_DATA_PAGEABLE_MAX_PAGE_SIZE:100}
+        one-indexed-parameters: false
+      sort:
+        sort-parameter: sort
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
